@@ -109,33 +109,48 @@ def extract_zip_to_temp(uploaded_zip) -> Optional[Path]:
     if uploaded_zip is None:
         return None
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        zip_path = Path(temp_dir) / uploaded_zip.name
+    try:
+        # Создаем временную директорию, которая не будет удалена автоматически
+        temp_dir = Path(tempfile.mkdtemp())
+        zip_path = temp_dir / uploaded_zip.name
 
-        try:
-            # Сохраняем ZIP файл
-            with open(zip_path, "wb") as f:
-                f.write(uploaded_zip.getbuffer())
+        # Сохраняем ZIP файл
+        with open(zip_path, "wb") as f:
+            f.write(uploaded_zip.getbuffer())
 
-            # Проверяем валидность ZIP
-            if not zipfile.is_zipfile(zip_path):
-                st.error("❌ Загруженный файл не является валидным ZIP-архивом")
-                return None
-
-            # Распаковываем
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(temp_dir)
-
-            logger.info(f"ZIP архив распакован: {uploaded_zip.name}")
-            return Path(temp_dir)
-
-        except zipfile.BadZipFile:
-            st.error("❌ Ошибка: поврежденный ZIP-архив")
-            return None
-        except Exception as e:
-            st.error(f"❌ Ошибка при распаковке ZIP: {e}")
+        # Проверяем валидность ZIP
+        if not zipfile.is_zipfile(zip_path):
+            st.error("❌ Загруженный файл не является валидным ZIP-архивом")
+            # Очищаем временную директорию
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
+        # Распаковываем
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(temp_dir)
+
+        logger.info(f"ZIP архив распакован: {uploaded_zip.name} в {temp_dir}")
+
+        # Сохраняем путь к временной директории в session state
+        st.session_state.temp_dir = temp_dir
+
+        return temp_dir
+
+    except zipfile.BadZipFile:
+        st.error("❌ Ошибка: поврежденный ZIP-архив")
+        # Очищаем временную директорию, если она была создана
+        if 'temp_dir' in locals():
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        return None
+    except Exception as e:
+        st.error(f"❌ Ошибка при распаковке ZIP: {e}")
+        # Очищаем временную директорию, если она была создана
+        if 'temp_dir' in locals():
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        return None
 
 def find_year_folders(base_dir: Path) -> List[str]:
     """Поиск папок с годами"""
