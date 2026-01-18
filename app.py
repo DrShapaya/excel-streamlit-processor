@@ -4,6 +4,10 @@ from pathlib import Path
 from datetime import datetime
 import re
 import warnings
+import zipfile
+import tempfile
+import os
+
 
 st.set_page_config(page_title="Excel Processor", layout="wide")
 st.title("📊 Обработка Excel-файлов (Месяцы → Год)")
@@ -13,11 +17,58 @@ st.title("📊 Обработка Excel-файлов (Месяцы → Год)")
 # ==========================
 st.subheader("1. Выбор директории")
 
-base_dir_input = st.text_input(
-    "Введите путь к основной директории с годами",
-    r"C:\Users\isaev\Downloads\Профотбор\Реестр профотбор",
-    help="Путь должен содержать папки с годами (например: 2024, 2025)"
+st.subheader("1. Источник данных")
+
+mode = st.radio(
+    "Выберите способ загрузки данных",
+    ["🖥 Локальная директория", "☁️ Загрузка ZIP-архива"]
 )
+
+base_dir = None
+temp_dir = None
+
+if mode == "🖥 Локальная директория":
+    base_dir_input = st.text_input(
+        "Введите путь к основной директории с годами",
+        r"C:\Users\isaev\Downloads\Профотбор\Реестр профотбор",
+        help="Путь должен содержать папки с годами (например: 2024, 2025)"
+    )
+
+    if not base_dir_input:
+        st.info("Введите путь к директории")
+        st.stop()
+
+    base_dir = Path(base_dir_input)
+
+    if not base_dir.exists():
+        st.error("Указанная директория не существует!")
+        st.stop()
+
+else:
+    uploaded_zip = st.file_uploader(
+        "Загрузите ZIP-архив с папками годов (например: 2024/2025)",
+        type=["zip"]
+    )
+
+    if not uploaded_zip:
+        st.info("Загрузите ZIP-архив для продолжения")
+        st.stop()
+
+    temp_dir = Path(tempfile.mkdtemp())
+    zip_path = temp_dir / uploaded_zip.name
+
+    with open(zip_path, "wb") as f:
+        f.write(uploaded_zip.read())
+
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(temp_dir)
+    except zipfile.BadZipFile:
+        st.error("Ошибка: загружен невалидный ZIP-архив")
+        st.stop()
+
+    base_dir = temp_dir
+    st.success("ZIP-архив успешно загружен и распакован")
 
 KEY_COLUMN = "ФИО"
 
@@ -32,36 +83,34 @@ MONTH_PATTERN = re.compile("|".join(MONTHS.keys()))
 years = []
 YEAR_DIR = None
 
-# Проверяем, введен ли путь
-if base_dir_input:
-    base_dir = Path(base_dir_input)
+# Проверяем, определена ли базовая директория
+if base_dir is None:
+    st.info("Пожалуйста, выберите источник данных")
+    st.stop()
 
-    if base_dir.exists():
-        # Ищем папки с годами
-        years = [p.name for p in base_dir.iterdir()
-                 if p.is_dir() and p.name.isdigit() and len(p.name) == 4]
+if not base_dir.exists():
+    st.error(f"Директория {base_dir} не существует!")
+    st.stop()
 
-        if years:
-            st.success(f"Найдено {len(years)} года(ов): {', '.join(sorted(years))}")
+# Ищем папки с годами
+years = [p.name for p in base_dir.iterdir()
+         if p.is_dir() and p.name.isdigit() and len(p.name) == 4]
 
-            # Выбор года
-            year_selected = st.selectbox("Выберите год для обработки", sorted(years))
+if not years:
+    st.warning("В указанной директории не найдено папок с годами (формат: YYYY)")
+    st.info("Проверьте, что директория содержит папки с названиями годов, например: 2024, 2025")
+    st.stop()
 
-            # Создаем путь к выбранной папке года
-            YEAR_DIR = base_dir / year_selected
+st.success(f"Найдено {len(years)} года(ов): {', '.join(sorted(years))}")
 
-            if not YEAR_DIR.exists():
-                st.error(f"Папка {YEAR_DIR} не найдена!")
-                st.stop()
-        else:
-            st.warning("В указанной директории не найдено папок с годами (формат: YYYY)")
-            st.info("Проверьте, что директория содержит папки с названиями годов, например: 2024, 2025")
-            st.stop()
-    else:
-        st.error("Указанная директория не существует!")
-        st.stop()
-else:
-    st.info("Пожалуйста, введите путь к директории с папками годов")
+# Выбор года
+year_selected = st.selectbox("Выберите год для обработки", sorted(years))
+
+# Создаем путь к выбранной папке года
+YEAR_DIR = base_dir / year_selected
+
+if not YEAR_DIR.exists():
+    st.error(f"Папка {YEAR_DIR} не найдена!")
     st.stop()
 
 # ==========================
