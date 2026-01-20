@@ -13,10 +13,6 @@ import threading
 from typing import Optional, Tuple, Dict, List
 import shutil
 
-# ==========================
-# КОНСТАНТЫ И НАСТРОЙКИ
-# ==========================
-
 CONFIG = {
     "KEY_COLUMN": "ФИО",
     "MAX_COLUMNS": 50,
